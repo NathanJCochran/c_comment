@@ -5,42 +5,170 @@ import shlex
 import re
 import copy
 
-comment_start  = '/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n'
-comment_misc   = ' * '
-comment_param  = ' * Param:   '
-comment_return = ' * Return:  '
-comment_end    = ' * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */\n'
+# Template for function comments:
+start_templ  = '/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n'
+descrp_templ = ' * '
+param_templ  = ' * Param:   '
+return_templ = ' * Return:  '
+end_templ    = ' * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */\n'
+
+class Tag:
+	def __init__ (self, tag_string):
+		self.string = tag_string
+		split_tag = tag_string.split()
+
+		self.name = split_tag[0]
+		self.line = int(split_tag[2])
+		self.declaration = " ".join(split_tag[4:])
+		self.return_type = self.declaration.split(self.name)[0].strip()
+		self.params = self.declaration.split("(")[1].split(")")[0].split(",")	
+
+	def __gt__ (self, other):
+		if self.line > other.line:
+			return True
+		else:
+			return False
+
+	def __lt__ (self, other):
+		if self.line < other.line:
+			return True
+		else:
+			return False
 
 def main():
+
+	# Gets lines and function tags of a .c file
 	filename = sys.argv[1]
-	command = 'ctags -x --c-kinds=f ' + filename
-	command_seq = shlex.split(command)
+	lines = get_lines(filename)
+	tags = get_tags(filename)	
 
-	f = open(filename, 'r')
-	lines = f.readlines()
-	f.close()
+	# Sort tags:
+	tags = sort_tags(tags)
 
-	proc = subprocess.Popen(command_seq, stdout = subprocess.PIPE)
-	tags = proc.stdout.readlines()
-	sort_tags(tags)
-	
-	lines_added = 0
+	# Iterate through function tags:
+	count = 0
 	for tag in tags:
-		line_num = int(tag[2])-1
-		print "\nFunction:\n\t"+ " ".join(tag[4:])
+		print_declaration(tag)
+
+		# If user chooses, get comments and splice them in:
 		if input_yn("Comment? (y/n): "):
-			lines[(line_num+lines_added):(line_num+lines_added)] = [get_comments(tag)]
-			lines_added += 1
+			lines[(tag.line-1+count):(tag.line-1+count)] = [get_comments(tag)]
+			count += 1
+	print "----------------------------------------"
 		
+	# Option to view changes before writing:
 	if input_yn("View changes? (y/n):"):
+		print "----------------------------------------\n"
 		for line in lines:
 			print line,
+		print "----------------------------------------"
 
+	# Ask confirmation before writing over existing file:
 	if input_yn("Commit changes? (y/n):"):
 		f = open(filename, 'w')
 		f.writelines(lines)
 		f.close()
+		print "----------------------------------------"
+		print "File successfully commented."
+		print "Goodbye."
+	else:
+		print "----------------------------------------"
+		print "No changes made."
+		print "Goodbye."
 
+
+def print_declaration(tag):
+		print "----------------------------------------"
+		# Print function declaration:
+		print "Function:\n\t"+ tag.declaration
+		print "----------------------------------------"
+
+
+def get_lines(filename):
+
+	# Read in all lines from the .c file:
+	f = open(filename, 'r')
+	lines = f.readlines()
+	f.close()
+	return lines
+
+
+def get_tags(filename):
+
+	# Get and sort output from ctags:
+	command = 'ctags -x --c-kinds=f ' + filename
+	command_seq = shlex.split(command)
+	proc = subprocess.Popen(command_seq, stdout = subprocess.PIPE)
+	return make_tags(proc.stdout.readlines())
+
+
+def make_tags(tag_strs):
+	tags = []
+	for tag_str in tag_strs:
+		tags.append(Tag(tag_str))
+	return tags
+
+"""
+	Sort array of function tags by line number
+"""
+def sort_tags(tags):
+	
+	# Sort tags based on line number (insertion sort):
+	for i in range(0, len(tags)):
+		temp = tags[i]
+		j = i
+		while j > 0 and temp < tags[j-1]:
+			tags[j] = tags[j-1]
+			j -= 1
+		tags[j] = temp
+
+	return tags
+
+"""
+	Prompts user for comments on the function specified
+	by the given (split up) tag.  Returns a string representing
+	a full block-comment to be inserted above the function
+	declaration in the .c source file
+"""
+def get_comments(tag):
+
+	# Get comments for function description, parameters, and return value:
+	descript_c = get_description_cmt(tag.name)
+	param_c = get_param_cmts(tag.params)
+	return_c = get_return_cmt(tag.return_type)
+
+	# Return concatenated string of comments making up a full comment block:
+	return start_templ + descript_c + param_c + return_c + end_templ
+
+
+def get_description_cmt(name):
+	cmt = raw_input("Description: \n\t")
+	if cmt != "":
+		return descrp_templ + cmt + "\n"
+	else:
+		return descrp_templ + name + "\n"
+
+def get_param_cmts(params):
+	param_c = ""
+	for param in params:
+		if param != "":
+			param = param.strip()
+			param_c += get_param_cmt(param)
+	return param_c
+
+def get_param_cmt(param):
+	cmt = raw_input("Param: \n\t" + param + ": ")
+	if cmt != "":
+		return param_templ + param + " -  " + cmt  + "\n"
+	else:
+		return param_templ + param +  "\n"
+
+def get_return_cmt(return_type):
+	cmt = raw_input("Return: \n\t" + return_type + ": ")
+	if cmt != "":
+		return return_templ + return_type + " -  " + cmt + "\n"
+	else:
+		return return_templ + return_type + "\n"
 
 """
     Prompts the user with a y/n question.
@@ -59,39 +187,7 @@ def input_yn(prompt):
     else:
         print "Invalid input.  Please enter yes or no (y/n)."
         return input_yn(prompt)
-
-
-
-def sort_tags(tags):
-	for x in range(0, len(tags)):
-		tags[x] = tags[x].split()
-
-		temp = copy.copy(tags[x])
-		hole = x
-		while hole > 0 and temp[2] < tags[hole-1][2]:
-			tags[hole] = tags[hole-1]
-			hole -= 1
-		tags[hole] = temp
-
-
-def get_comments(tag):
-	func_name = tag[0]
-	func_def = tag[4:]
-	return_type = " ".join(func_def).split(func_name)[0].strip()
-	params = (re.split('\(|\)', " ".join(func_def))[1:-1])[0].split(",")
-
-	func_descr = comment_misc + raw_input("Description: \n\t") + "\n"
-	func_param = ""
-	for param in params:
-		if param != "":
-			param = param.strip()
-			func_param += comment_param + param + " -  " + raw_input("Param: \n\t" + param + ": ") + "\n"
-	func_return = comment_return + return_type + " -  " + raw_input("Return: \n\t" + return_type + ": ") + "\n"	
-
-
-	return comment_start + func_descr + func_param + func_return + comment_end
-
-			
+		
 if __name__ == "__main__":
 	main()
 
