@@ -1,5 +1,5 @@
-c_comment
-=========
+ccmnt
+=====
 
 c_comment is a simple command-line utility, written in Python, for inserting function-level comments
 into a C source code file. The tool finds all function declarations in a file, and, for each function,
