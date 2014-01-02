@@ -10,5 +10,5 @@ and commits the changes.
 To install, simply download the script and place it in your PATH.
 
 Requires:
-* Python 2.7.3 (has not been tested with other versions)
-* ctags
+- Python 2.7.3 (has not been tested with other versions)
+- ctags
